@@ -1,8 +1,8 @@
 use crossterm::{
     cursor, execute,
     style::{self, Stylize},
-    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen, SetSize},
-    ExecutableCommand, QueueableCommand,
+    terminal::{size, EnterAlternateScreen, LeaveAlternateScreen, SetSize},
+    QueueableCommand,
 };
 use nanorand::{Rng, WyRand};
 use std::env;
@@ -25,18 +25,16 @@ fn main() {
         let tdelay = argument[1].parse::<u64>().expect("parsing of dealy failed");
         let maxgens = argument[2].parse::<usize>().expect("parsing gen failed");
         let delay = time::Duration::from_millis(tdelay);
+        let (cols, rows) = size().expect("Failed at getting size");
 
         // create first gen of the cells
-        let mut cells = [[false; XMAX]; YMAX];
+        let mut cells = [[(true, false); XMAX]; YMAX];
         first_gen(&mut cells, alive_cells);
 
         // set terminal
-        execute!(
-            stdout(),
-            EnterAlternateScreen,
-            SetSize(XMAX as u16, YMAX as u16),
-        )
-        .expect("Cannot spawn window");
+        execute!(stdout(), EnterAlternateScreen).expect("Cannot spawn new window");
+        execute!(stdout(), cursor::Hide).expect("Failed to hide cursor");
+        execute!(stdout(), SetSize(XMAX as u16, YMAX as u16)).expect("Cannot resize window");
 
         // loop
         let mut gens = 1;
@@ -48,18 +46,14 @@ fn main() {
         }
 
         //reset terminal
-        execute!(stdout(), LeaveAlternateScreen).unwrap();
-        stdout().execute(cursor::Show).expect("cursor still absent");
+        execute!(stdout(), SetSize(cols, rows)).expect("Cannot resize window");
+        execute!(stdout(), cursor::Show).expect("Failed to show cursor");
+        execute!(stdout(), LeaveAlternateScreen).expect("Cannot exit window");
     }
 }
 
-fn display(cells: &[[bool; XMAX]; YMAX], gen: usize) {
+fn display(cells: &[[(bool, bool); XMAX]; YMAX], gen: usize) {
     let mut stdout = stdout();
-    stdout
-        .execute(cursor::Hide)
-        .expect("problem in hiding cursor")
-        .execute(terminal::Clear(terminal::ClearType::All))
-        .expect("could not clear the screen");
 
     stdout
         .queue(cursor::MoveTo(3, 0))
@@ -69,19 +63,27 @@ fn display(cells: &[[bool; XMAX]; YMAX], gen: usize) {
 
     for y in 1..YMAX - 1 {
         for x in 1..XMAX - 1 {
-            if cells[y][x] {
-                stdout
-                    .queue(cursor::MoveTo(x as u16, y as u16))
-                    .expect("cursor jammed !")
-                    .queue(style::PrintStyledContent("O".magenta()))
-                    .expect("problem in drawing");
+            if cells[y][x].0 {
+                if cells[y][x].1 {
+                    stdout
+                        .queue(cursor::MoveTo(x as u16, y as u16))
+                        .expect("cursor jammed !")
+                        .queue(style::PrintStyledContent(" ".magenta()))
+                        .expect("problem in drawing");
+                } else {
+                    stdout
+                        .queue(cursor::MoveTo(x as u16, y as u16))
+                        .expect("cursor jammed !")
+                        .queue(style::PrintStyledContent("#".magenta()))
+                        .expect("problem in drawing");
+                }
             }
         }
     }
     stdout.flush().expect("flushing failed");
 }
 
-fn first_gen(cells: &mut [[bool; XMAX]; YMAX], alive_cells: usize) {
+fn first_gen(cells: &mut [[(bool, bool); XMAX]; YMAX], alive_cells: usize) {
     let mut rnd = WyRand::new();
     let one_fourth = |x: usize| x.div(4);
     let three_forth = |x| 3 * one_fourth(x);
@@ -90,27 +92,27 @@ fn first_gen(cells: &mut [[bool; XMAX]; YMAX], alive_cells: usize) {
             rnd.generate_range(one_fourth(XMAX)..three_forth(XMAX)),
             rnd.generate_range(one_fourth(YMAX)..three_forth(YMAX)),
         );
-        cells[y][x] = true;
+        cells[y][x].1 = true;
     }
 }
 
-fn next_generation(cells: [[bool; XMAX]; YMAX]) -> [[bool; XMAX]; YMAX] {
-    let mut new_cells = [[false; XMAX]; YMAX];
+fn next_generation(cells: [[(bool, bool); XMAX]; YMAX]) -> [[(bool, bool); XMAX]; YMAX] {
+    let mut new_cells = [[(false, false); XMAX]; YMAX];
     for y in 0..YMAX {
         for x in 0..XMAX {
             let alive_neighbors = alive_neighbors(&cells, (y, x));
-            new_cells[y][x] = if cells[y][x] {
+            new_cells[y][x] = if cells[y][x].1 {
                 match alive_neighbors {
-                    0..=1 => false, // dead
-                    2..=3 => true,  // alive
-                    4..=8 => false, // overpopulation
+                    0..=1 => (true, false), // dead
+                    2..=3 => (true, true),  // alive
+                    4..=8 => (true, false), // overpopulation
                     _ => panic!("phantom neighbors"),
                 }
             } else {
                 match alive_neighbors {
-                    3 => true,
-                    0..=2 => false,
-                    4..=8 => false,
+                    3 => (true, true),
+                    0..=2 => (true, false),
+                    4..=8 => (true, false),
                     _ => panic!("phantom neighbors"),
                 }
             }
@@ -119,7 +121,7 @@ fn next_generation(cells: [[bool; XMAX]; YMAX]) -> [[bool; XMAX]; YMAX] {
     new_cells
 }
 
-fn alive_neighbors(cells: &[[bool; XMAX]; YMAX], coordinate: (usize, usize)) -> u8 {
+fn alive_neighbors(cells: &[[(bool, bool); XMAX]; YMAX], coordinate: (usize, usize)) -> u8 {
     let adjacent: [(i16, i16); 8] = [
         (0, 1),
         (0, -1),
@@ -136,7 +138,7 @@ fn alive_neighbors(cells: &[[bool; XMAX]; YMAX], coordinate: (usize, usize)) -> 
         .map(|(y0, x0)| (y0 + y as i16, x0 + x as i16))
         .into_iter()
         .filter(|(y, x)| (*y as usize) < YMAX && (*x as usize) < XMAX)
-        .filter(|(y, x)| cells[*y as usize][*x as usize])
+        .filter(|(y, x)| cells[*y as usize][*x as usize].1)
         .count();
 
     alive_neighbors as u8
