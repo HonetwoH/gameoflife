@@ -24,7 +24,7 @@ fn main() {
             .expect("parsing of cells failed");
         let tdelay = argument[1].parse::<u64>().expect("parsing of dealy failed");
         let maxgens = argument[2].parse::<usize>().expect("parsing gen failed");
-        let delay = time::Duration::from_millis(tdelay);
+        let delay = time::Duration::from_secs(1 / 60);
         let (cols, rows) = size().expect("Failed at getting size");
 
         // create first gen of the cells
@@ -41,7 +41,7 @@ fn main() {
         while gens <= maxgens {
             cells = next_generation(cells);
             thread::sleep(delay);
-            let _ = display(&cells, gens);
+            display(&cells, gens);
             gens += 1;
         }
 
@@ -68,13 +68,13 @@ fn display(cells: &[[(bool, bool); XMAX]; YMAX], gen: usize) {
                     stdout
                         .queue(cursor::MoveTo(x as u16, y as u16))
                         .expect("cursor jammed !")
-                        .queue(style::PrintStyledContent(" ".magenta()))
+                        .queue(style::PrintStyledContent("O".magenta()))
                         .expect("problem in drawing");
                 } else {
                     stdout
                         .queue(cursor::MoveTo(x as u16, y as u16))
                         .expect("cursor jammed !")
-                        .queue(style::PrintStyledContent("#".magenta()))
+                        .queue(style::PrintStyledContent(" ".white()))
                         .expect("problem in drawing");
                 }
             }
