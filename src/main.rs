@@ -29,7 +29,7 @@ fn main() {
         let max = (xmax, ymax);
 
         // create first gen of the cells
-        let mut cells = vec![vec![(true, false); xmax]; ymax];
+        let mut cells = vec![vec![[false; 2]; xmax]; ymax];
         first_gen(&mut cells, alive_cells, max);
 
         // set terminal
@@ -38,12 +38,12 @@ fn main() {
         execute!(stdout(), SetSize(xmax as u16, ymax as u16)).expect("Cannot resize window");
 
         // loop
-        let mut gens = 1;
-        while gens <= maxgens {
-            cells = next_generation(cells, max);
+        let mut gen: usize = 1;
+        while gen <= maxgens {
+            next_generation(&mut cells, gen, max);
             thread::sleep(delay);
-            display(&cells, gens, max);
-            gens += 1;
+            display(&cells, gen, max);
+            gen += 1;
         }
 
         //reset terminal
@@ -53,9 +53,9 @@ fn main() {
     }
 }
 
-fn display(cells: &Vec<Vec<(bool, bool)>>, gen: usize, (xmax, ymax): (usize, usize)) {
+fn display(cells: &Vec<Vec<[bool; 2]>>, gen: usize, (xmax, ymax): (usize, usize)) {
+    let (current, previous) = (gen % 2, (gen + 1) % 2);
     let mut stdout = stdout();
-
     stdout
         .queue(cursor::MoveTo(3, 0))
         .expect("paniced which setting gen")
@@ -64,27 +64,22 @@ fn display(cells: &Vec<Vec<(bool, bool)>>, gen: usize, (xmax, ymax): (usize, usi
 
     for y in 1..ymax - 1 {
         for x in 1..xmax - 1 {
-            if cells[y][x].0 {
-                if cells[y][x].1 {
-                    stdout
-                        .queue(cursor::MoveTo(x as u16, y as u16))
-                        .expect("cursor jammed !")
-                        .queue(style::PrintStyledContent("O".magenta()))
-                        .expect("problem in drawing");
-                } else {
-                    stdout
-                        .queue(cursor::MoveTo(x as u16, y as u16))
-                        .expect("cursor jammed !")
-                        .queue(style::PrintStyledContent(" ".white()))
-                        .expect("problem in drawing");
-                }
-            }
+            let ch = if cells[y][x][current] {
+                "O".magenta()
+            } else {
+                " ".white()
+            };
+            stdout
+                .queue(cursor::MoveTo(x as u16, y as u16))
+                .expect("cursor jammed !")
+                .queue(style::PrintStyledContent(ch))
+                .expect("problem in drawing");
         }
     }
     stdout.flush().expect("flushing failed");
 }
 
-fn first_gen(cells: &mut Vec<Vec<(bool, bool)>>, alive_cells: usize, (xmax, ymax): (usize, usize)) {
+fn first_gen(cells: &mut Vec<Vec<[bool; 2]>>, alive_cells: usize, (xmax, ymax): (usize, usize)) {
     let mut rnd = WyRand::new();
     let one_fourth = |x: usize| x.div(4);
     let three_forth = |x| 3 * one_fourth(x);
@@ -93,16 +88,17 @@ fn first_gen(cells: &mut Vec<Vec<(bool, bool)>>, alive_cells: usize, (xmax, ymax
             rnd.generate_range(one_fourth(xmax)..three_forth(xmax)),
             rnd.generate_range(one_fourth(ymax)..three_forth(ymax)),
         );
-        cells[y][x].1 = true;
+        cells[y][x][0] = true;
     }
 }
 
-fn next_generation(cells: &mut Vec<Vec<(bool, bool)>>, (xmax, ymax): (usize, usize)) {
-    let mut new_cells = [[(false, false); xmax]; ymax];
+fn next_generation(cells: &mut Vec<Vec<[bool; 2]>>, gen: usize, (xmax, ymax): (usize, usize)) {
+    let (current, previous) = (gen % 2, (gen + 1) % 2);
     for y in 0..ymax {
         for x in 0..xmax {
-            let alive_neighbors = alive_neighbors(&cells, (y, x), (xmax, ymax));
-            new_cells[y][x] = if cells[y][x].1 {
+            let alive_neighbors = alive_neighbors(&cells, gen, (y, x), (xmax, ymax));
+            cells[y][x][current] = if cells[y][x][previous] {
+                // TODO:
                 match alive_neighbors {
                     0..=1 => (true, false), // dead
                     2..=3 => (true, true),  // alive
@@ -119,11 +115,11 @@ fn next_generation(cells: &mut Vec<Vec<(bool, bool)>>, (xmax, ymax): (usize, usi
             }
         }
     }
-    new_cells
 }
 
 fn alive_neighbors(
-    cells: &Vec<Vec<(bool, bool)>>,
+    cells: &Vec<Vec<[bool; 2]>>,
+    gen: usize,
     coordinate: (usize, usize),
     (xmax, ymax): (usize, usize),
 ) -> u8 {
@@ -137,13 +133,14 @@ fn alive_neighbors(
         (1, 1),
         (-1, -1),
     ];
+    let (current, previous) = (gen % 2, (gen + 1) % 2);
 
     let (y, x) = coordinate;
     let alive_neighbors = adjacent
         .map(|(y0, x0)| (y0 + y as i16, x0 + x as i16))
         .into_iter()
         .filter(|(y, x)| (*y as usize) < ymax && (*x as usize) < xmax)
-        .filter(|(y, x)| cells[*y as usize][*x as usize].1)
+        .filter(|(y, x)| cells[*y as usize][*x as usize][previous]) // TODO: take care in this section
         .count();
 
     alive_neighbors as u8
