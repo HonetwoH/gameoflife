@@ -1,6 +1,9 @@
 use crossterm::{
     cursor,
-    event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers},
+    event::{
+        poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
+        MouseButton, MouseEvent, MouseEventKind,
+    },
     execute,
     style::{self, Stylize},
     terminal::{self, size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, SetSize},
@@ -14,8 +17,9 @@ use std::{thread, time};
 
 fn main() {
     let argument: Vec<String> = env::args().skip(1).collect();
-    if argument.len() != 2 || argument[0] == "help" {
+    let (alive_cells, delay) = if argument.len() != 2 || argument[0] == "help" {
         eprintln!("Arguments required are: \n<cells> (800-2200) \t<delay> (80-750 millis)");
+        return;
     } else {
         // argument parsing
         let alive_cells = argument[0]
@@ -23,34 +27,35 @@ fn main() {
             .expect("parsing of cells failed");
         let tdelay = argument[1].parse::<u64>().expect("parsing of dealy failed");
         let delay = time::Duration::from_millis(tdelay);
-        let (xmax, ymax) = {
-            let (xmax, ymax) = size().expect("Failed at getting size");
-            (xmax as usize, ymax as usize)
+        (alive_cells, delay)
+    };
+    let (xmax, ymax) = {
+        let (xmax, ymax) = size().expect("Failed at getting size");
+        (xmax as usize, ymax as usize)
+    };
+    let max = (xmax, ymax);
+
+    // create first gen of the cells
+    let mut cells = vec![vec![[false; 2]; xmax]; ymax];
+    first_gen(&mut cells, alive_cells, max);
+
+    setup_terminal(max);
+    setup_borders(&mut stdout(), max);
+    // loop
+    let mut gen: u16 = 1;
+    while gen <= u16::MAX {
+        match read_event() {
+            Ok(MyCommand::Quit) | Err(_) => {
+                break;
+            }
+            _ => {}
         };
-        let max = (xmax, ymax);
-
-        // create first gen of the cells
-        let mut cells = vec![vec![[false; 2]; xmax]; ymax];
-        first_gen(&mut cells, alive_cells, max);
-
-        setup_terminal(max);
-        setup_borders(&mut stdout(), max);
-        // loop
-        let mut gen: u16 = 1;
-        while gen <= u16::MAX {
-            match read_event() {
-                Ok(MyCommand::Quit) | Err(_) => {
-                    break;
-                }
-                Ok(MyCommand::Pass) => {}
-            };
-            next_generation(&mut cells, gen as usize, max);
-            thread::sleep(delay);
-            display(&cells, &mut stdout(), gen as usize, max);
-            gen += 1;
-        }
-        cleanup_terminal(max);
+        next_generation(&mut cells, gen as usize, max);
+        thread::sleep(delay);
+        display(&cells, &mut stdout(), gen as usize, max);
+        gen += 1;
     }
+    cleanup_terminal(max);
 }
 
 fn setup_terminal((xmax, ymax): (usize, usize)) {
@@ -70,9 +75,11 @@ fn cleanup_terminal((xmax, ymax): (usize, usize)) {
     execute!(stdout(), LeaveAlternateScreen).expect("Cannot exit window");
 }
 
+// Event handling
 enum MyCommand {
+    Pass, // used unit '()' to 'pass' around and make type checker happy
+    NewCell(u16, u16),
     Quit,
-    Pass,
 }
 
 fn read_event() -> Result<MyCommand> {
@@ -88,6 +95,12 @@ fn read_event() -> Result<MyCommand> {
                 KeyCode::Char('q') => Ok(MyCommand::Quit),
                 _ => Ok(MyCommand::Pass),
             },
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Drag(MouseButton::Left),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }) => Ok(MyCommand::NewCell(column, row)),
             _ => Ok(MyCommand::Pass),
         }
     } else {
@@ -189,7 +202,7 @@ fn display(
         for x in 1..xmax - 1 {
             if cells[y][x][current] != cells[y][x][previous] {
                 let ch = if cells[y][x][current] {
-                    "+".magenta()
+                    "+".dark_green()
                 } else {
                     " ".white()
                 };
@@ -260,7 +273,7 @@ fn alive_neighbors(
         (1, 1),
         (-1, -1),
     ];
-    let (current, previous) = (gen % 2, (gen + 1) % 2);
+    let (_current, previous) = (gen % 2, (gen + 1) % 2);
 
     let (y, x) = coordinate;
     let alive_neighbors = adjacent
