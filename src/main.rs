@@ -14,15 +14,14 @@ use std::{thread, time};
 
 fn main() {
     let argument: Vec<String> = env::args().skip(1).collect();
-    if argument.len() != 3 || argument[0] == "help" {
-        eprintln!("Arguments required are: \n<cells> (800-2200) \t<delay> (80-750 millis) \t<generations> (minimum 10)");
+    if argument.len() != 2 || argument[0] == "help" {
+        eprintln!("Arguments required are: \n<cells> (800-2200) \t<delay> (80-750 millis)");
     } else {
         // argument parsing
         let alive_cells = argument[0]
             .parse::<usize>()
             .expect("parsing of cells failed");
         let tdelay = argument[1].parse::<u64>().expect("parsing of dealy failed");
-        let maxgens = argument[2].parse::<usize>().expect("parsing gen failed");
         let delay = time::Duration::from_millis(tdelay);
         let (xmax, ymax) = {
             let (xmax, ymax) = size().expect("Failed at getting size");
@@ -37,20 +36,17 @@ fn main() {
         setup_borders(&mut stdout(), max);
 
         // loop
-        let mut gen: usize = 1;
-        while gen <= maxgens {
+        let mut gen: u16 = 1;
+        while gen <= u16::MAX {
             match read_event() {
                 Ok(MyCommand::Quit) | Err(_) => {
                     break;
                 }
                 Ok(MyCommand::Pass) => {}
-                Ok(MyCommand::Pause) => {
-                    panic!("Paused me !!!!!");
-                }
             };
-            next_generation(&mut cells, gen, max);
+            next_generation(&mut cells, gen as usize, max);
             thread::sleep(delay);
-            display(&cells, &mut stdout(), gen, max);
+            display(&cells, &mut stdout(), gen as usize, max);
             gen += 1;
         }
         cleanup_terminal(max);
