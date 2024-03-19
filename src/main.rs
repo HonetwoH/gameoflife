@@ -1,13 +1,15 @@
 use crossterm::{
-    cursor, execute,
+    cursor,
+    event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers},
+    execute,
     style::{self, Stylize},
-    terminal::{size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, SetSize},
-    QueueableCommand,
+    terminal::{self, size, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, SetSize},
+    QueueableCommand, Result,
 };
 use nanorand::{Rng, WyRand};
-use std::env;
 use std::io::{stdout, Stdout, Write};
 use std::ops::Div;
+use std::{env, time::Duration};
 use std::{thread, time};
 
 fn main() {
@@ -31,33 +33,90 @@ fn main() {
         // create first gen of the cells
         let mut cells = vec![vec![[false; 2]; xmax]; ymax];
         first_gen(&mut cells, alive_cells, max);
-
-        // set terminal
-        execute!(stdout(), EnterAlternateScreen).expect("Cannot spawn new window");
-        execute!(stdout(), Clear(ClearType::All)).expect("Failed to clear screen");
-        execute!(stdout(), cursor::Hide).expect("Failed to hide cursor");
-        execute!(stdout(), SetSize(xmax as u16, ymax as u16)).expect("Cannot resize window");
-
+        setup_terminal(max);
         setup_borders(&mut stdout(), max);
 
         // loop
         let mut gen: usize = 1;
         while gen <= maxgens {
+            match read_event() {
+                Ok(MyCommand::Quit) | Err(_) => {
+                    break;
+                }
+                Ok(MyCommand::Pass) => {}
+                Ok(MyCommand::Pause) => {
+                    panic!("Paused me !!!!!");
+                }
+            };
             next_generation(&mut cells, gen, max);
             thread::sleep(delay);
             display(&cells, &mut stdout(), gen, max);
             gen += 1;
         }
-
-        //reset terminal
-        execute!(stdout(), SetSize(xmax as u16, ymax as u16)).expect("Cannot resize window");
-        execute!(stdout(), cursor::Show).expect("Failed to show cursor");
-        execute!(stdout(), LeaveAlternateScreen).expect("Cannot exit window");
+        cleanup_terminal(max);
     }
 }
 
+fn setup_terminal((xmax, ymax): (usize, usize)) {
+    // set terminal
+    execute!(stdout(), EnterAlternateScreen).expect("Cannot spawn new window");
+    execute!(stdout(), Clear(ClearType::All)).expect("Failed to clear screen");
+    execute!(stdout(), cursor::Hide).expect("Failed to hide cursor");
+    execute!(stdout(), SetSize(xmax as u16, ymax as u16)).expect("Cannot resize window");
+    terminal::enable_raw_mode().expect("Failed to setup terminal");
+}
+
+fn cleanup_terminal((xmax, ymax): (usize, usize)) {
+    //reset terminal
+    let _ = terminal::disable_raw_mode();
+    execute!(stdout(), SetSize(xmax as u16, ymax as u16)).expect("Cannot resize window");
+    execute!(stdout(), cursor::Show).expect("Failed to show cursor");
+    execute!(stdout(), LeaveAlternateScreen).expect("Cannot exit window");
+}
+
+enum MyCommand {
+    Quit,
+    Pass,
+}
+
+fn read_event() -> Result<MyCommand> {
+    if poll(Duration::from_millis(100))? {
+        match read()? {
+            Event::Key(KeyEvent {
+                code,
+                modifiers: KeyModifiers::NONE,
+                kind: KeyEventKind::Press,
+                state: KeyEventState::NONE,
+            }) => match code {
+                KeyCode::Char(' ') => block(),
+                KeyCode::Char('q') => Ok(MyCommand::Quit),
+                _ => Ok(MyCommand::Pass),
+            },
+            _ => Ok(MyCommand::Pass),
+        }
+    } else {
+        Ok(MyCommand::Pass)
+    }
+}
+
+fn block() -> Result<MyCommand> {
+    loop {
+        if poll(Duration::from_millis(75))? {
+            match read()? {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char(' '),
+                    modifiers: KeyModifiers::NONE,
+                    kind: KeyEventKind::Press,
+                    state: KeyEventState::NONE,
+                }) => break,
+                _ => {}
+            }
+        }
+    }
+    Ok(MyCommand::Pass)
+}
+
 fn setup_borders(stdout: &mut Stdout, (xmax, ymax): (usize, usize)) {
-    // some more setup ///////////////////////////////////
     stdout
         .queue(cursor::MoveTo(0, 0))
         .expect("panicked while setting cursor window")
@@ -141,6 +200,8 @@ fn display(
     }
     stdout.flush().expect("flushing failed");
 }
+
+// cellular automata
 
 fn first_gen(cells: &mut Vec<Vec<[bool; 2]>>, alive_cells: usize, (xmax, ymax): (usize, usize)) {
     let mut rnd = WyRand::new();
