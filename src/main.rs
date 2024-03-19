@@ -76,7 +76,7 @@ enum MyCommand {
 }
 
 fn read_event() -> Result<MyCommand> {
-    if poll(Duration::from_millis(100))? {
+    if poll(Duration::from_millis(0))? {
         match read()? {
             Event::Key(KeyEvent {
                 code,
@@ -100,16 +100,23 @@ fn block() -> Result<MyCommand> {
         if poll(Duration::from_millis(75))? {
             match read()? {
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char(' '),
+                    code,
                     modifiers: KeyModifiers::NONE,
                     kind: KeyEventKind::Press,
                     state: KeyEventState::NONE,
-                }) => break,
+                }) => match code {
+                    KeyCode::Char(' ') => {
+                        break Ok(MyCommand::Pass);
+                    }
+                    KeyCode::Char('q') => {
+                        break Ok(MyCommand::Quit);
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
     }
-    Ok(MyCommand::Pass)
 }
 
 fn setup_borders(stdout: &mut Stdout, (xmax, ymax): (usize, usize)) {
