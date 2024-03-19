@@ -32,9 +32,9 @@ fn main() {
         // create first gen of the cells
         let mut cells = vec![vec![[false; 2]; xmax]; ymax];
         first_gen(&mut cells, alive_cells, max);
+
         setup_terminal(max);
         setup_borders(&mut stdout(), max);
-
         // loop
         let mut gen: u16 = 1;
         while gen <= u16::MAX {
@@ -208,12 +208,12 @@ fn display(
 
 fn first_gen(cells: &mut Vec<Vec<[bool; 2]>>, alive_cells: usize, (xmax, ymax): (usize, usize)) {
     let mut rnd = WyRand::new();
-    let one_fourth = |x: usize| x.div(4);
-    let three_forth = |x| 3 * one_fourth(x);
+    let one_by_eight = |x: usize| x.div(8);
+    let seven_by_eight = |x| 7 * one_by_eight(x);
     for _ in 0..alive_cells {
         let (x, y) = (
-            rnd.generate_range(one_fourth(xmax)..three_forth(xmax)),
-            rnd.generate_range(one_fourth(ymax)..three_forth(ymax)),
+            rnd.generate_range(one_by_eight(xmax)..seven_by_eight(xmax)),
+            rnd.generate_range(one_by_eight(ymax)..seven_by_eight(ymax)),
         );
         cells[y][x][0] = true;
     }
